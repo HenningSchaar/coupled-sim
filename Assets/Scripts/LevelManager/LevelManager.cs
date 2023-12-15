@@ -18,15 +18,14 @@ public class LevelManager
         _playerSystem = playerSys;
         Experiments = experiments;
     }
-    #pragma warning disable 0414
+
     bool _mainLoaded = false;
     bool _expLoaded = false;
-    #pragma warning restore 0414
     int _localPlayerIdx;
     List<int> _roles;
 
 
-    public void LoadLevelWithLocalPlayer(int experiment, int localPlayerIdx, List<int> roles, NetworkingManager.Trial trial)
+    public void LoadLevelWithLocalPlayer(int experiment, int localPlayerIdx, List<int> roles)
     {
         var expPrefab = Experiments[experiment];
         _mainLoadOp = SceneManager.LoadSceneAsync(expPrefab.Scene);
@@ -51,26 +50,12 @@ public class LevelManager
                     }
                 }
             }
-            foreach(IExperimentModifier em in ActiveExperiment.GetComponentsInChildren(typeof(IExperimentModifier)))
-            {
-                em.SetParameter(trial.experimentParameters);
-            }
             _mainLoadOp = null;
         };
     }
 
-    public void LoadLevelNoLocalPlayer(int experiment, List<int> playerStartingPositions, NetworkingManager.Trial trial)
+    public void LoadLevelNoLocalPlayer(int experiment, List<int> playerStartingPositions)
     {
-        LoadLevelWithLocalPlayer(experiment, 0, playerStartingPositions, trial);
-    }
-
-    internal string GetFilename(NetworkingManager.Trial currentTrial, int currentTrialIndex)
-    {
-        string result = currentTrialIndex + "_" + Experiments[currentTrial.experimentIndex].ShortName + "_roleIdx-" + currentTrial.roleIndex;
-        foreach(var param in currentTrial.experimentParameters)
-        {
-            result += ("_" + param.name + "-" + param.value);
-        }
-        return result + DateTime.Now.ToString("_yy-MM-dd_hh-mm");
+        LoadLevelWithLocalPlayer(experiment, 0, playerStartingPositions);
     }
 }

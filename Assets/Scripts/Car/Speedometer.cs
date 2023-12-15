@@ -35,7 +35,7 @@ public class Speedometer : MonoBehaviour
         if (lastUpdate + 0.5f < Time.time)
         {
             lastUpdate = Time.time;
-            speedometerText.text = Mathf.RoundToInt(v).ToString();
+            speedometerText.text = v.ToString("0");
         }
         var angle = Mathf.Lerp(pivotMinSpeedAngle, pivotMaxSpeedAngle, v/maxSpeed);
         if (pivot != null) {

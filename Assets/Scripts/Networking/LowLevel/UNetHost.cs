@@ -3,9 +3,6 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.Assertions;
 
-using Unity.Collections;
-using Unity.Networking.Transport;
-
 public struct TransportEvent
 {
     public enum Type
@@ -25,12 +22,11 @@ public struct TransportEvent
 public class UNetHost
 {
     const int MaxPlayers = UNetConfig.MaxPlayers;
-    public int NumRemotePlayers => m_Connections.Length;
+    public int NumRemotePlayers => _connectionIds.Count;
     const int NoPlayer = -1;
 
-    private NativeList<NetworkConnection> m_Connections;
-    NetworkDriver m_Driver;
-
+    List<int> _connectionIds = new List<int>();
+    UNETTransport _transport = new UNETTransport();
     bool _initialized;
 
     byte[] _sendBuffer = new byte[UNetConfig.SendBufferSize];
@@ -38,9 +34,9 @@ public class UNetHost
     MemoryStream _writerStream;
     Serializer _serializer;
     Dictionary<int, int> _connId2playerId = new Dictionary<int, int>();
-    NetworkConnection[] _playerId2connId = new NetworkConnection[MaxPlayers];
+    int[] _playerId2connId = new int[MaxPlayers];
 
-    public bool PlayerConnected(int player) => _playerId2connId[player] != default(NetworkConnection);
+    public bool PlayerConnected(int player) => _playerId2connId[player] != NoPlayer;
 
     int FindFreePlayerId()
     {
@@ -55,40 +51,17 @@ public class UNetHost
         Assert.IsFalse(true);
         return NoPlayer;
     }
-    NetworkPipeline reliablePipeline;
 
     public void Init()
     {
-        m_Driver = NetworkDriver.Create();
-        reliablePipeline = m_Driver.CreatePipeline(typeof(ReliableSequencedPipelineStage));
-        var endpoint = NetworkEndPoint.AnyIpv4;
-        endpoint.Port = UNetConfig.Port;
-        if (m_Driver.Bind(endpoint) != 0)
-            Debug.Log("Failed to bind to port " + UNetConfig.Port);
-        else
-        {
-            Debug.Log("Listening on " + NetworkUtils.GetLocalInterfaceAddresses()[0]);
-            m_Driver.Listen();
-        }
-
-        m_Connections = new NativeList<NetworkConnection>(UNetConfig.MaxHostConnections, Allocator.Persistent);
-
+        _transport.Init(UNetConfig.Port, UNetConfig.MaxHostConnections);
         _initialized = true;
         _writerStream = new MemoryStream(_sendBuffer);
         _writer = new BinaryWriter(_writerStream);
         _serializer = new Serializer(_writer);
         for (int i = 0; i < UNetConfig.MaxPlayers; i++)
         {
-            _playerId2connId[i] = default(NetworkConnection);
-        }
-    }
-
-    public void Shutdown()
-    {
-        if (m_Driver.IsCreated)
-        {
-            m_Driver.Dispose();
-            m_Connections.Dispose();
+            _playerId2connId[i] = NoPlayer;
         }
     }
 
@@ -96,41 +69,25 @@ public class UNetHost
     public void Update(MessageDispatcher dispatch)
     {
         Assert.IsTrue(_initialized, "Update() should not be called before Initialize()");
-
-        m_Driver.ScheduleUpdate().Complete();
-
-        // Clean up connections
-        for (int i = 0; i < m_Connections.Length; i++)
+        TransportEvent tEvent = new TransportEvent();
+        while (_transport.NextEvent(ref tEvent))
         {
-            if (!m_Connections[i].IsCreated)
+            switch (tEvent.type)
             {
-                m_Connections.RemoveAtSwapBack(i);
-                --i;
-            }
-        }
-
-        // Accept new connections
-        NetworkConnection c;
-        while ((c = m_Driver.Accept()) != default(NetworkConnection))
-        {
-            m_Connections.Add(c);
-            Debug.Log("Accepted a connection");
-            var player = FindFreePlayerId();
-            _connId2playerId[c.InternalId] = player;
-            _playerId2connId[player] = c;
-            SendReliableToPlayer(new WelcomeToRoomMsg() { PlayerIdx = player }, player);
-        }
-
-        for (int i = 0; i < m_Connections.Length; ++i)
-        {
-            DataStreamReader strm;
-            NetworkEvent.Type cmd;
-            // Pop all events for the connection
-            while ((cmd = m_Driver.PopEventForConnection(m_Connections[i], out strm)) != NetworkEvent.Type.Empty)
-            {
-                if (cmd == NetworkEvent.Type.Data)
+                case TransportEvent.Type.Connect:
+                    _connectionIds.Add(tEvent.connectionId);
+                    var player = FindFreePlayerId();
+                    _connId2playerId[tEvent.connectionId] = player;
+                    _playerId2connId[player] = tEvent.connectionId;
+                    SendReliableToPlayer(new WelcomeToRoomMsg() { PlayerIdx = player }, player);
+                    break;
+                case TransportEvent.Type.Disconnect:
+                    _connectionIds.Remove(tEvent.connectionId);
+                    break;
+                case TransportEvent.Type.Data:
                 {
-                    var msgId = strm.ReadInt();
+                    var reader = new BinaryReader(new MemoryStream(tEvent.data));
+                    var msgId = reader.ReadInt32();
                     if (NetMsg.IsInternal(msgId))
                     {
                         switch ((InternalMsgId)msgId)
@@ -142,13 +99,9 @@ public class UNetHost
                     }
                     else
                     {
-                        dispatch.Dispatch(msgId, new NDeserializer(ref strm), _connId2playerId[m_Connections[i].InternalId]);
+                        dispatch.Dispatch(msgId, new Deserializer(reader), _connId2playerId[tEvent.connectionId]);
                     }
-                }
-                else if (cmd == NetworkEvent.Type.Disconnect)
-                {
-                    Debug.Log("Client disconnected from server");
-                    m_Connections[i] = default(NetworkConnection);
+                    break;
                 }
             }
         }
@@ -167,8 +120,9 @@ public class UNetHost
     void EndMessageBroadcastExceptPlayer(bool reliable, int except)
     {
         var exceptConnId = _playerId2connId[except];
-        foreach (var connId in m_Connections)
+        foreach (var connId in _connectionIds)
         {
+            int i = _connId2playerId[connId];
             if (exceptConnId != connId)
             {
                 SendDataNoClear(connId, reliable);
@@ -177,22 +131,21 @@ public class UNetHost
         Clear();
     }
 
-    void SendDataNoClear(NetworkConnection connId, bool reliable)
+    void SendDataNoClear(int connId, bool reliable)
     {
-        m_Driver.BeginSend(reliable ? reliablePipeline : NetworkPipeline.Null, connId, out var writer);
-        unsafe
+        if (reliable)
         {
-            fixed (byte* pointerToFirst = _sendBuffer)
-            {
-                writer.WriteBytes(pointerToFirst, (int)_writerStream.Position);
-            }
+            _transport.SendReliable(connId, _sendBuffer, (int)_writerStream.Position);
         }
-        m_Driver.EndSend(writer);
+        else
+        {
+            _transport.SendUnreliable(connId, _sendBuffer, (int)_writerStream.Position);
+        }
     }
 
     void Clear() => _writerStream.Position = 0;
 
-    void SendDataAndClear(NetworkConnection connId, bool reliable)
+    void SendDataAndClear(int connId, bool reliable)
     {
         SendDataNoClear(connId, reliable);
         Clear();
@@ -212,7 +165,7 @@ public class UNetHost
         _writer.Write(msg.MessageId);
         _writer.Write(receiverId);
         msg.Sync(_serializer);
-        foreach (var connId in m_Connections)
+        foreach (var connId in _connectionIds)
         {
             SendDataNoClear(connId, reliable);
         }
@@ -232,7 +185,7 @@ public class UNetHost
 
         _writer.Write(msg.MessageId);
         msg.Sync(_serializer);
-        foreach (var connId in m_Connections)
+        foreach (var connId in _connectionIds)
         {
             SendDataNoClear(connId, reliable);
         }

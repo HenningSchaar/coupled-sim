@@ -14,7 +14,7 @@ public class AICarSyncSystem
         Client
     }
 
-    public struct SpawnAICarMsg : INetMessage
+    struct SpawnAICarMsg : INetMessage
     {
         public int MessageId => (int)MsgId.S_SpawnAICar;
         public int PrefabIdx;
@@ -22,20 +22,12 @@ public class AICarSyncSystem
         public Quaternion Rotation;
         public bool SpawnDriver;
         public bool SpawnPassenger;
-        public int VehicleType;
-        public Vector3 Color;
-        public bool Labeled;
 
         public void Sync<T>(T synchronizer) where T : ISynchronizer
         {
             synchronizer.Sync(ref PrefabIdx);
             synchronizer.Sync(ref Position);
             synchronizer.Sync(ref Rotation);
-            synchronizer.Sync(ref SpawnDriver);
-            synchronizer.Sync(ref SpawnPassenger);
-            synchronizer.Sync(ref VehicleType);
-            synchronizer.Sync(ref Color);
-            synchronizer.Sync(ref Labeled);
         }
     }
 
@@ -46,6 +38,7 @@ public class AICarSyncSystem
     [NonSerialized]
     public List<PlayerAvatar> Cars = new List<PlayerAvatar>();
 
+    public int CarsSpawnedSinceLastLog = 0;
     Mode _mode;
     UNetHost _host;
     public void InitHost(UNetHost host)
@@ -81,11 +74,10 @@ public class AICarSyncSystem
         var waypointProgressTracker = aiCar.GetComponent<WaypointProgressTracker>();
         waypointProgressTracker.enabled = true;
         waypointProgressTracker.Init(parameters.Track);
-        var paint = aiCar.GetComponent<CarConfigurator>();
-        paint.ChangeParameters(parameters);
         var avatar = aiCar.GetComponent<PlayerAvatar>();
-        avatar.Initialize(false, PlayerSystem.InputMode.None, PlayerSystem.ControlMode.HostAI, parameters.VehicleType);
-        var color = parameters.color;
+        avatar.PassengerPuppet.SetActive(parameters.SpawnPassenger);
+        avatar.DriverPuppet.SetActive(parameters.SpawnDriver);
+        avatar.Initialize(false, PlayerSystem.InputMode.None, PlayerSystem.ControlMode.HostAI);
         var rb = aiCar.GetComponent<Rigidbody>();
         rb.isKinematic = false;
         rb.GetComponent<Rigidbody>().useGravity = true;
@@ -96,10 +88,7 @@ public class AICarSyncSystem
             Position = parameters.SpawnPoint.position,
             Rotation = parameters.SpawnPoint.rotation,
             SpawnPassenger = parameters.SpawnPassenger,
-            Labeled = parameters.Labeled,
-            SpawnDriver = parameters.SpawnDriver,
-            VehicleType = (int)parameters.VehicleType,
-            Color = new Vector3(color.r, color.g, color.b),
+            SpawnDriver = parameters.SpawnDriver
         });
         return aiCar;
     }
@@ -109,9 +98,9 @@ public class AICarSyncSystem
         var msg = NetMsg.Read<SpawnAICarMsg>(sync);
         var go = GameObject.Instantiate(Prefabs[msg.PrefabIdx], msg.Position, msg.Rotation);
         var avatar = go.GetComponent<PlayerAvatar>();
-        var color = msg.Color;
-        avatar.GetComponent<CarConfigurator>().ChangeParameters(msg);
-        avatar.Initialize(true, PlayerSystem.InputMode.None, PlayerSystem.ControlMode.HostAI, (PlayerSystem.VehicleType)msg.VehicleType);
+        avatar.PassengerPuppet.SetActive(msg.SpawnPassenger);
+        avatar.DriverPuppet.SetActive(msg.SpawnDriver);
+        avatar.Initialize(true, PlayerSystem.InputMode.None, PlayerSystem.ControlMode.HostAI);
         Cars.Add(avatar);
     }
 

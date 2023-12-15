@@ -6,9 +6,10 @@ using UnityEngine;
 //broadcast visual syncing network message and displays red bar as a visual synchronization marker (used to syncing gameplay videos captured on different devices)
 public class VisualSyncManager : MonoBehaviour
 {
+
     public void DoHostGUI(Host host)
     {
-        if (!NetworkingManager.Instance.hideGui && GUILayout.Button($"Visual syncing"))
+        if (GUILayout.Button($"Visual syncing"))
         {
             host.BroadcastMessage(new VisualSyncMessage());
             DisplayMarker();

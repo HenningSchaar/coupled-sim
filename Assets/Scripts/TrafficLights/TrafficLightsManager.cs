@@ -32,51 +32,32 @@ public enum LightState
 //defines and executes traffic light cycle described as a sequence of TrafficLightEvents
 public class TrafficLightsManager : MonoBehaviour
 {
-
-    [SerializeField]
-    private TrafficLightEvent[] initialStreetLightSetup;
     [SerializeField]
     private TrafficLightEvent[] streetLightEvents;
-    public int CurrentIndex = 0;
-    public float CurrentTimer = 0;
-    bool initialized = false;
+    float _timer = 0;
+    int _index = 0;
 
-    public void UpdateHost(List<int> initiallyTriggeredEvents, List<int> triggeredEvents)
+    public void UpdateHost(List<int> triggeredEvents)
     {
-        if (!initialized)
+        while (_timer >= streetLightEvents[_index].deltaTime && _index < streetLightEvents.Length)
         {
-            for(int i = 0; i < initialStreetLightSetup.Length; i++)
+            triggeredEvents.Add(_index);
+            TriggerEvent(_index);
+            _timer = 0;
+            _index++;
+            if (_index >= streetLightEvents.Length)
             {
-                initiallyTriggeredEvents.Add(CurrentIndex);
-                TriggerEvent(i, true);
-            }
-            initialized = true;
-        }
-        while (CurrentTimer >= streetLightEvents[CurrentIndex].deltaTime && CurrentIndex < streetLightEvents.Length)
-        {
-            triggeredEvents.Add(CurrentIndex);
-            TriggerEvent(CurrentIndex, false);
-            CurrentTimer -= streetLightEvents[CurrentIndex].deltaTime;
-            CurrentIndex++;
-            if (CurrentIndex >= streetLightEvents.Length)
-            {
-                CurrentIndex = 0;
+                _index = 0;
             }
         }
 
-        CurrentTimer += Time.deltaTime;
+        _timer += Time.deltaTime;
     }
 
-    public void TriggerEvent(int idx, bool initialSetup)
+    public void TriggerEvent(int idx)
     {
-        if (initialSetup)
-        {
-            ChangeCarLightsState(ref initialStreetLightSetup[idx]);
-            ChangePedestrianLightsState(ref initialStreetLightSetup[idx]);
-        } else {
-            ChangeCarLightsState(ref streetLightEvents[idx]);
-            ChangePedestrianLightsState(ref streetLightEvents[idx]);
-        }
+        ChangeCarLightsState(ref streetLightEvents[idx]);
+        ChangePedestrianLightsState(ref streetLightEvents[idx]);
     }
 
     private void ChangeCarLightsState(ref TrafficLightEvent streetLightEvent)

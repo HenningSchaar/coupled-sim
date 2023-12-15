@@ -21,7 +21,7 @@ public interface IVehicle
 namespace VehicleBehaviour {
     [RequireComponent(typeof(Rigidbody))]
     public class WheelVehicle : MonoBehaviour, IVehicle {
-        public PlayerAvatar playerAvatar;
+        
         [Header("Inputs")]
     #if MULTIOSCONTROLS
         [SerializeField] PlayerNumber playerId;
@@ -31,7 +31,6 @@ namespace VehicleBehaviour {
         public bool IsPlayer { get{ return isPlayer; } set{ isPlayer = value; } } 
 
         // Input names to read using GetAxis
-        #pragma warning disable 0414
         [SerializeField] string throttleInput = "Throttle";
         [SerializeField] string brakeInput = "Brake";
         [SerializeField] string turnInput = "Horizontal";
@@ -41,7 +40,6 @@ namespace VehicleBehaviour {
         [SerializeField] string blinkersLeftInput = "blinker_left";
         [SerializeField] string blinkersRightInput = "blinker_right";
         [SerializeField] string blinkersClearInput = "blinker_clear";
-        #pragma warning restore 0414
         
         /* 
          *  Turn input curve: x real input, y value used
@@ -296,7 +294,7 @@ namespace VehicleBehaviour {
                     throttle = GetInput(throttleInput) * (reverse?-1f:1);
                 }
                 breaking = Mathf.Clamp01(GetInput(brakeInput));
-                playerAvatar.SetBreakLights(breaking > 0);
+
                 // Turn
                 steering = turnInputCurve.Evaluate(GetInput(turnInput)) * steerAngle;
             }

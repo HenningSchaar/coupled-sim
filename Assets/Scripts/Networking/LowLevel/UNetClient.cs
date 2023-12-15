@@ -1,36 +1,28 @@
 ﻿using System.IO;
 using UnityEngine;
 using UnityEngine.Assertions;
-using System.Net;
-using System.Net.Sockets;
-
-using Unity.Collections;
-using Unity.Networking.Transport;
 
 //low level UNET networking client implementation - message sending and handling
 public class UNetClient
 {
-    public NetworkDriver m_Driver;
-    public NetworkConnection m_Connection;
-    public bool Done;
-
-    public bool ConnectionEstablished => m_Connection != default(NetworkConnection);
+    const int NotConnected = -1;
+    UNETTransport _transport = new UNETTransport();
+    int _connectionId = NotConnected;
+    public bool ConnectionEstablished => !HasError && _connectionId != NotConnected;
     public bool InRoom => MyPlayerId != -1;
     public int MyPlayerId { get; private set; } = -1;
+    public bool HasError = false;
+    public string GetError() => _transport.ErrorToString(_error);
+    int _error;
 
     byte[] _sendBuffer = new byte[UNetConfig.SendBufferSize];
     Serializer _serializer;
     BinaryWriter _writer;
     MemoryStream _writerStream;
-    NetworkPipeline reliablePipeline;
 
     public void Init()
     {
-        m_Driver = NetworkDriver.Create();
-        m_Connection = default(NetworkConnection);
-        reliablePipeline = m_Driver.CreatePipeline(typeof(ReliableSequencedPipelineStage));
-
-
+        _transport.Init(0, 1);
         _writerStream = new MemoryStream(_sendBuffer);
         _writer = new BinaryWriter(_writerStream);
         _serializer = new Serializer(_writer);
@@ -39,73 +31,62 @@ public class UNetClient
     public void Connect(string ip)
     {
         Assert.IsNotNull(ip);
-        var endpoint = NetworkEndPoint.LoopbackIpv4;
-        IPAddress ipAddress;
-        if (IPAddress.TryParse(ip, out ipAddress)) {
-            var ipOut = new NativeArray<byte>(ipAddress.GetAddressBytes(), Allocator.Temp);
-            endpoint.SetRawAddressBytes(ipOut);
+        _connectionId = _transport.Connect(ip, UNetConfig.Port, out _error);
+        if (_error != 0)
+        {
+            HasError = true;
         }
-        endpoint.Port = UNetConfig.Port;
-        m_Connection = m_Driver.Connect(endpoint);
     }
 
     public void Disconnect()
     {
         Assert.IsTrue(ConnectionEstablished);
-        m_Driver.Dispose();
-        m_Connection = default(NetworkConnection);
+        _transport.Shutdown();
+        _transport.Init(0, 1);
+        _connectionId = NotConnected;
     }
 
     //processing network messages comming from clients
     public void Update(MessageDispatcher dispatch)
     {
+        if (HasError) return;
         Assert.IsTrue(ConnectionEstablished, "Update() should not be called before Connect()");
-
-        m_Driver.ScheduleUpdate().Complete();
-
-        if (!m_Connection.IsCreated)
+        var tEvent = new TransportEvent();
+        while (_transport.NextEvent(ref tEvent))
         {
-            if (!Done)
-                Debug.Log("Something went wrong during connect");
-            return;
-        }
-
-        DataStreamReader stream;
-        NetworkEvent.Type cmd;
-        while ((cmd = m_Connection.PopEvent(m_Driver, out stream)) != NetworkEvent.Type.Empty)
-        {
-            if (cmd == NetworkEvent.Type.Connect)
+            switch (tEvent.type)
             {
-                dispatch.HandleConnect();
-            }
-            else if (cmd == NetworkEvent.Type.Data)
-            {
-                Done = true;
-
-                var msgId = stream.ReadInt();
-                var sync = new NDeserializer(ref stream);
-                if (NetMsg.IsInternal(msgId))
+                case TransportEvent.Type.None:
+                    break;
+                case TransportEvent.Type.Connect:
+                    dispatch.HandleConnect();
+                    break;
+                case TransportEvent.Type.Disconnect:
+                    break;
+                case TransportEvent.Type.Data:
                 {
-                    switch ((InternalMsgId)msgId)
+                    var reader = new BinaryReader(new MemoryStream(tEvent.data));
+                    var msgId = reader.ReadInt32();
+                    var sync = new Deserializer(reader);
+                    if (NetMsg.IsInternal(msgId))
                     {
-                        case InternalMsgId.WelcomeToRoom:
+                        switch ((InternalMsgId)msgId)
+                        {
+                            case InternalMsgId.WelcomeToRoom:
                             {
                                 WelcomeToRoomMsg msg = new WelcomeToRoomMsg();
                                 msg.Sync(sync);
                                 MyPlayerId = msg.PlayerIdx;
                                 break;
                             }
+                        }
                     }
+                    else
+                    {
+                        dispatch.Dispatch(msgId, sync, Host.PlayerId);
+                    }
+                    break;
                 }
-                else
-                {
-                    dispatch.Dispatch(msgId, sync, Host.PlayerId);
-                }
-            }
-            else if (cmd == NetworkEvent.Type.Disconnect)
-            {
-                Debug.Log("Client got disconnected from server");
-                m_Connection = default(NetworkConnection);
             }
         }
     }
@@ -123,18 +104,16 @@ public class UNetClient
         SendData(reliable);
     }
 
-
     void SendData(bool reliable)
     {
-        m_Driver.BeginSend(reliable ? reliablePipeline : NetworkPipeline.Null, m_Connection, out var writer);
-        unsafe
+        if (reliable)
         {
-            fixed (byte* pointerToFirst = _sendBuffer)
-            {
-                writer.WriteBytes(pointerToFirst, (int)_writerStream.Position);
-            }
+            _transport.SendReliable(_connectionId, _sendBuffer, (int)_writerStream.Position);
         }
-        m_Driver.EndSend(writer);
+        else
+        {
+            _transport.SendUnreliable(_connectionId, _sendBuffer, (int)_writerStream.Position);
+        }
         _writerStream.Position = 0;
     }
 

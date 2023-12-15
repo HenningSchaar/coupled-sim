@@ -23,12 +23,6 @@ public class PlayerSystem : MonoBehaviour
         HostAI
     }
 
-    public enum VehicleType
-    {
-        MDV,
-        AV
-    }
-
     public InputMode PlayerInputMode;
     [SerializeField]
     PlayerAvatar _AvatarPrefab;
@@ -66,24 +60,16 @@ public class PlayerSystem : MonoBehaviour
         Assert.IsNotNull(tracker);
         aiCar.enabled = true;
         tracker.enabled = true;
-        foreach(var waypoint in tracker.Circuit.Waypoints)
-        {
-            var speedSettings = waypoint.GetComponent<SpeedSettings>();
-            if (speedSettings != null)
-            {
-                speedSettings.targetAICar = aiCar;
-            }
-        }
     }
 
     PlayerAvatar GetAvatarPrefab(SpawnPointType type, int carIdx)
     {
         switch (type)
         {
-            case SpawnPointType.PlayerControlledPedestrian:
+            case SpawnPointType.Pedestrian:
                 return _AvatarPrefab;
-            case SpawnPointType.PlayerControlingCar:
-            case SpawnPointType.PlayerInAIControlledCar:
+            case SpawnPointType.Driver:
+            case SpawnPointType.Passenger:
                 return _AvatarPrefabDriver[carIdx];
             default:
                 Assert.IsFalse(true, $"Invalid SpawnPointType: {type}");
@@ -93,9 +79,9 @@ public class PlayerSystem : MonoBehaviour
 
     public void SpawnLocalPlayer(SpawnPoint spawnPoint, int player, ExperimentRoleDefinition role)
     {
-        bool isPassenger = spawnPoint.Type == SpawnPointType.PlayerInAIControlledCar;
+        bool isPassenger = spawnPoint.Type == SpawnPointType.Passenger;
         LocalPlayer = SpawnAvatar(spawnPoint, GetAvatarPrefab(spawnPoint.Type, role.carIdx), player, role);
-        LocalPlayer.Initialize(false, PlayerInputMode, isPassenger ? ControlMode.Passenger : ControlMode.Driver, spawnPoint.VehicleType, spawnPoint.CameraIndex);
+        LocalPlayer.Initialize(false, PlayerInputMode, isPassenger ? ControlMode.Passenger : ControlMode.Driver);
         if (isPassenger)
         {
             var waypointFollow = LocalPlayer.GetComponent<WaypointProgressTracker>();
@@ -111,7 +97,7 @@ public class PlayerSystem : MonoBehaviour
     public void SpawnRemotePlayer(SpawnPoint spawnPoint, int player, ExperimentRoleDefinition role)
     {
         var remotePlayer = SpawnAvatar(spawnPoint, GetAvatarPrefab(spawnPoint.Type, role.carIdx), player, role);
-        remotePlayer.Initialize(true, InputMode.None, ControlMode.HostAI, spawnPoint.VehicleType);
+        remotePlayer.Initialize(true, InputMode.None, ControlMode.HostAI);
     }
 
     public List<PlayerAvatar> GetAvatarsOfType(AvatarType type)
@@ -132,11 +118,9 @@ public class PlayerSystem : MonoBehaviour
         var cameraSetup = spawnPoint.Point.GetComponent<CameraSetup>();
         if (cameraSetup != null)
         {
-            foreach (var cam in avatar.GetComponentsInChildren<Camera>())
-            {
-                cam.fieldOfView = cameraSetup.fieldOfView;
-                cam.transform.localRotation = Quaternion.Euler(cameraSetup.rotation);
-            }
+            var cam = avatar.GetComponentInChildren<Camera>();
+            cam.fieldOfView = cameraSetup.fieldOfView;
+            cam.transform.localRotation = Quaternion.Euler(cameraSetup.rotation);
         }
         Avatars.Add(avatar);
         GetAvatarsOfType(avatar.Type).Add(avatar);
@@ -188,7 +172,7 @@ public class PlayerSystem : MonoBehaviour
             {
                 PlayerInputMode = InputMode.Suite;
             }
-            if (GUILayout.Button("HMD mode"))
+            if (GUILayout.Button("Oculus mode"))
             {
                 PlayerInputMode = InputMode.VR;
             }

@@ -1,0 +1,14 @@
+Smooth: False
+name;tag;layer;x;y;z;rotX;rotY;rotZ;waypointType;speed;acceleration;jerk;causeToYield;lookAtPlayerWhileYielding;lookAtPlayerAfterYielding;yieldTime;brakingAcceleration;lookAtPedFromSeconds;lookAtPedToSeconds;collider_enabled;isTrigger;centerX;centerY;centerZ;sizeX;sizeY;sizeZ
+WP1;WP;5;-96.3;0;64.9;0;90;0;1;30;2;5;False;False;False;0;0;0;0;True;True;0;1;0;4.25;4;0
+WP2;WP;5;-4.09;0;64.82;0;90;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP3;WP;5;6.95;0;64.03;0;135;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP4;WP;5;7.64;0;53.2;0;180;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP5;WP;5;7.64;0;21.56;0;180;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP6;WP;5;6.91;0;10.75;0;225;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP7;WP;5;-3.92;0;9.950001;0;270;0;1;30;2;5;False;False;False;0;0;0;0;True;True;0;1;0;4.25;4;0
+WP9;WP;5;-96.31;0;9.200001;0;270;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP10;WP;5;-107.06;0;10.67;0;315;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP11;WP;5;-107.9;0;21.57;0;0;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP12;WP;5;-107.89;0;53.2;0;0;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0
+WP13;WP;5;-107.11;0;63.99;0;45;0;1;30;2;5;False;False;False;0;0;0;0;False;True;0;1;0;4.25;4;0

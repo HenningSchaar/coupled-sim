@@ -19,12 +19,10 @@ public class AICar : MonoBehaviour, IVehicle
     }
 
     public CarState state = CarState.DRIVING;
-    public PlayerAvatar playerAvatar;
+
     // Motion related variables
     private float set_speed = 0;                                           // Velocity of cars in simulation
     private float set_acceleration = 0;                                     // Acceleration of cars in simulation
-    const float breakingTreshold = -1;
-                                    // Acceleration of cars in simulation
     public float jerk = 2;                                                 // Jerk of cars in simulation
     public float turn_rate_degree = 360;
     private float conversion = 3.6f;
@@ -37,22 +35,7 @@ public class AICar : MonoBehaviour, IVehicle
     private Transform rotationAxis;
     private float Timer1;
     private float Timer2;
-    private Quaternion modelLocalRotation
-    {
-        get
-        {
-            return modelElements[0].localRotation;
-        }
-        set
-        {
-            foreach(var me in modelElements)
-            {
-                me.localRotation = value;
-            }
-        }
-    }
-    public Transform [] modelElements;
-
+    public Transform model;
 
     public bool braking = false;
     public bool reset = false;
@@ -60,15 +43,6 @@ public class AICar : MonoBehaviour, IVehicle
     private float triggerlocation;
     private float startlocation;
     private float delta_distance;
-
-    public List<CustomBehaviour> CustomBehaviours = new List<CustomBehaviour>();
-    internal void TriggerCustomBehaviours(CustomBehaviourData bd)
-    {
-        foreach(var cb in CustomBehaviours)
-        {
-            cb.Trigger(bd);
-        }
-    }
 
     private float speedAfterYield;
     private float accAfterYield;
@@ -141,17 +115,15 @@ public class AICar : MonoBehaviour, IVehicle
                 acceleration = set_acceleration;
                 t += Mathf.Abs(jerk) / Mathf.Abs(set_acceleration) * Time.fixedDeltaTime;
                 pitch = acceleration / 3 * HasPitch;
-                modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(-pitch, 0, 0), 0.5f);
+                model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(-pitch, 0, 0), 0.5f);
             }
 
             if (set_acceleration > 0f && set_speed > speed || set_acceleration < 0f && set_speed < speed)
             {
                 speed = speed + set_acceleration * Time.fixedDeltaTime * conversion;
                 pitch = acceleration / 3 * HasPitch;
-                modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(-pitch, 0, 0), 0.5f);
+                model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(-pitch, 0, 0), 0.5f);
             }
-
-            playerAvatar.SetBreakLights(set_acceleration < 0f && (set_speed < speed || speed < 0.1f));
 
             if (acceleration != 0 && Mathf.Abs(speed) < Mathf.Abs(set_speed) * (1 + tolerance) + tolerance * 10 && Mathf.Abs(speed) > Mathf.Abs(set_speed) * (1 - tolerance) - tolerance * 10)
             {
@@ -194,11 +166,11 @@ public class AICar : MonoBehaviour, IVehicle
                 // Pitches larger than 0.5 degrees are capped at 0.5 degrees.
                 if (pitch < 0.5f)
                 {
-                    modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
+                    model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
                 }
                 else
                 {
-                    modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(0.5f, 0, 0), 0.5f);
+                    model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(0.5f, 0, 0), 0.5f);
                 }
             }
 
@@ -209,7 +181,7 @@ public class AICar : MonoBehaviour, IVehicle
 
                 if (pitch >= 0)
                 {
-                    modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
+                    model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
                 }
 
             }
@@ -221,7 +193,7 @@ public class AICar : MonoBehaviour, IVehicle
 
                 if (pitch >= 0)
                 {
-                    modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
+                    model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
                 }
 
                 speed = 0f;
@@ -235,7 +207,7 @@ public class AICar : MonoBehaviour, IVehicle
 
                 if (pitch >= 0) // Apply pitch only when larger than 0 degrees.
                 {
-                    modelLocalRotation = Quaternion.Slerp(modelLocalRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
+                    model.localRotation = Quaternion.Slerp(model.localRotation, Quaternion.Euler(pitch, 0, 0), 0.5f);
                 }
 
                 if (Timer2 >= 2f) // After standing still for two seconds, passenger can initiate driving again by pressing space.
@@ -315,46 +287,30 @@ public class AICar : MonoBehaviour, IVehicle
 
     void OnTriggerEnter(Collider other)
     {
-        SpeedSettings speedSettings = other.GetComponent<SpeedSettings>();
-        if (speedSettings == null || (speedSettings.targetAICar != null && speedSettings.targetAICar != this))
-        {
-            return;
-        }
         if (other.gameObject.CompareTag("WP"))
         {
-            GetComponent<PlayerAvatar>().CarBlinkers.SwitchToState(speedSettings.BlinkerState);
-
-            if (speedSettings.Type == SpeedSettings.WaypointType.InitialSetSpeed)
+            // If WaypointNumber is one, take over settings
+            if (other.GetComponent<SpeedSettings>().WaypointType == 1)
             {
-                if (speedSettings.causeToYield)
-                {
-                    speed = 0;
-                }
-                else
-                {
-                    speed = speedSettings.speed;
-                }
-            }
-            if (speedSettings.Type == SpeedSettings.WaypointType.SetSpeedTarget || speedSettings.Type == SpeedSettings.WaypointType.InitialSetSpeed)
-            {
-                if (speedSettings.causeToYield)
+                if (other.GetComponent<SpeedSettings>().causeToYield)
                 {
                     set_speed = 0;
-                    set_acceleration = speedSettings.brakingAcceleration;
-                    speedAfterYield = speedSettings.speed;
-                    accAfterYield = speedSettings.acceleration;
-                    yieldingTime = speedSettings.yieldTime;
-                    //PlayerLookAtPed.EnableTrackingWhileYielding = speedSettings.lookAtPlayerWhileYielding;
+                    set_acceleration = other.GetComponent<SpeedSettings>().brakingAcceleration;
+                    speedAfterYield = other.GetComponent<SpeedSettings>().speed;
+                    accAfterYield = other.GetComponent<SpeedSettings>().acceleration;
+                    yieldingTime = other.GetComponent<SpeedSettings>().yieldTime;
+                    //PlayerLookAtPed.EnableTrackingWhileYielding = other.GetComponent<SpeedSettings>().lookAtPlayerWhileYielding;
                     shouldYield = true;
                     state = CarState.BRAKING;
                 }
                 else
                 {
-                    set_speed = speedSettings.speed;
-                    set_acceleration = speedSettings.acceleration;
+                    set_speed = other.GetComponent<SpeedSettings>().speed;
+                    set_acceleration = other.GetComponent<SpeedSettings>().acceleration;
                 }
             }
-            else if (speedSettings.Type == SpeedSettings.WaypointType.Delete)
+            // If WaypointNumber is two, destroy gameobject.
+            else if (other.GetComponent<SpeedSettings>().WaypointType == 2)
             {
                 gameObject.SetActive(false);
                 Destroy(gameObject);
@@ -368,9 +324,9 @@ public class AICar : MonoBehaviour, IVehicle
             triggerlocation = transform.position.x;
             braking = true;
             WaitInputX = true;
-            set_speed = speedSettings.speed;
-            set_acceleration = speedSettings.acceleration;
-            jerk = -Mathf.Abs(speedSettings.jerk);
+            set_speed = other.GetComponent<SpeedSettings>().speed;
+            set_acceleration = other.GetComponent<SpeedSettings>().acceleration;
+            jerk = -Mathf.Abs(other.GetComponent<SpeedSettings>().jerk);
         }
         // Change of tag here that causes deceleration when hitting trigger in Z direction
         else if (other.gameObject.CompareTag("StartTrial_Z"))
@@ -378,9 +334,9 @@ public class AICar : MonoBehaviour, IVehicle
             triggerlocation = transform.position.z; 
             braking = true;
             WaitTrialZ = true;
-            set_speed = speedSettings.speed;
-            set_acceleration = speedSettings.acceleration;
-            jerk = -Mathf.Abs(speedSettings.jerk);
+            set_speed = other.GetComponent<SpeedSettings>().speed;
+            set_acceleration = other.GetComponent<SpeedSettings>().acceleration;
+            jerk = -Mathf.Abs(other.GetComponent<SpeedSettings>().jerk);
         }
 
         // Change of tag here that causes deceleration when hitting trigger in Z direction
@@ -389,9 +345,9 @@ public class AICar : MonoBehaviour, IVehicle
             triggerlocation = transform.position.x;
             braking = true;
             WaitTrialX = true;
-            set_speed = speedSettings.speed;
-            set_acceleration = speedSettings.acceleration;
-            jerk = -Mathf.Abs(speedSettings.jerk);
+            set_speed = other.GetComponent<SpeedSettings>().speed;
+            set_acceleration = other.GetComponent<SpeedSettings>().acceleration;
+            jerk = -Mathf.Abs(other.GetComponent<SpeedSettings>().jerk);
         }
     }
 
